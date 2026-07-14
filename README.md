@@ -234,13 +234,13 @@ call — see `app/ai_assistant.py`. Reasoning:
 | Deployment notes | This file, "Deployment Notes" section above |
 
 ### Screenshots
-```markdown
+
 ![Dashboard](dashboard.png)
 ![Employee Search](employees.png)
 ![Seat Allocation](seat_allocation.png)
 ![AI Assistant](ai_assistant.png)
 ![Project dashboard](projects.png)
-```
+
 Capture each directly from the live frontend:
 1. **`dashboard.png`** — the Dashboard tab, showing the stat cards and both charts with real data
 2. **`employees.png`** — the Employees tab with a search term entered and results showing
