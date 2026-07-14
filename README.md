@@ -228,7 +228,7 @@ call — see `app/ai_assistant.py`. Reasoning:
 | Database schema | `backend/alembic/versions/` (migration files), also documented above |
 | Sample seed data | `backend/app/seed.py` — run via `python -m app.seed` |
 | Sample login credentials | Not applicable — no authentication layer |
-| Screenshots | `screenshots/` folder — see below |
+| Screenshots | root directory — see below |
 | API documentation | https://seat-allocation-y2n8.onrender.com/docs (Swagger, auto-generated) |
 | Debugging notes | `AI_PROMPTS.md`, Prompt 8 and Prompt 9 sections |
 | Deployment notes | This file, "Deployment Notes" section above |
