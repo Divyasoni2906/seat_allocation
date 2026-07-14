@@ -7,7 +7,11 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 # SQLAlchemy's URL abstraction means no other code needs to change.
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./ethara.db")
 
-connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
+connect_args = (
+    {"check_same_thread": False}
+    if DATABASE_URL.startswith("sqlite")
+    else {"connect_timeout": 10}
+)
 
 engine = create_engine(DATABASE_URL, connect_args=connect_args)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

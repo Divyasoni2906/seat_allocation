@@ -2,11 +2,11 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .database import Base, engine
+from .database import Base
 from . import models  # noqa: F401 ensures models are registered before create_all
 from .routers import employees, projects, seats, dashboard, ai
 
-Base.metadata.create_all(bind=engine)
+# Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="Ethara Seat Allocation & Project Mapping System",
