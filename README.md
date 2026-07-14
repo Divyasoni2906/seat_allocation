@@ -1,5 +1,10 @@
 # Ethara Seat Allocation & Project Mapping System
 
+**Live frontend:** https://seat-allocation-flax.vercel.app
+**Live backend / API docs (Swagger):** https://seat-allocation-y2n8.onrender.com/docs
+**GitHub repository:** https://github.com/Divyasoni2906/seat_allocation
+**Sample login credentials:** not applicable — this system has no authentication layer; all endpoints are open, matching the brief's baseline requirement (auth was not listed as required).
+
 A full-stack system for managing seat allocation and project mapping for
 ~5,000 employees, with search/filter, a live dashboard, and a natural-language
 AI assistant for seat/project queries.
@@ -151,16 +156,51 @@ No code changes needed — SQLAlchemy handles the dialect swap. Run
 
 ## Deployment Notes
 
-- **Backend → Render**: new Web Service from this repo (`backend/` as root),
-  add a PostgreSQL instance, set `DATABASE_URL` to its connection string and
-  `CORS_ORIGINS` to your deployed frontend URL. Run `alembic upgrade head`
-  once against the remote DB (via Render's shell or locally pointed at the
-  remote URL).
-- **Frontend → Vercel**: import repo with `frontend/` as root, set
-  `VITE_API_BASE_URL` to the Render backend URL.
-- Swagger docs are automatically available at `/docs` on the deployed
-  backend — that satisfies the "API documentation link" requirement with no
-  extra work.
+This was actually deployed (not just planned) as follows:
+
+**Backend → Render (native Python runtime, not Docker):**
+- New Web Service, root directory `backend/`
+- Build Command: `pip install -r requirements.txt`
+- Start Command: `alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+  — the `alembic upgrade head &&` prefix is required, not optional: this app
+  creates its schema exclusively through Alembic (see the `main.py` note
+  above), so without running migrations first on every deploy, a fresh
+  Postgres instance would have no tables and every request would 500.
+- Environment variables: `DATABASE_URL` (Render's Postgres internal
+  connection string) and `CORS_ORIGINS` set to the exact Vercel URL,
+  `https://seat-allocation-flax.vercel.app` — no trailing slash, no quotes
+  around the value.
+
+**Frontend → Vercel:**
+- Import repo, root directory `frontend/`
+- Environment variable `VITE_API_BASE_URL` set to
+  `https://seat-allocation-y2n8.onrender.com`
+
+**Real issues hit during this deployment (see `AI_PROMPTS.md` Prompt 9 for
+full detail):**
+1. `alembic upgrade head` failed with `DuplicateObject: type "projectstatus"
+   already exists` the first time it ran against the fresh Render Postgres
+   instance. Root cause: `main.py` had `Base.metadata.create_all(bind=engine)`
+   running on every app boot, completely bypassing Alembic — if the app ever
+   started against that database even once before migrations ran, it created
+   the schema directly and left Alembic's own migration history out of sync.
+   Fixed by removing that line entirely; Alembic is now the only thing that
+   creates schema, ever.
+2. The seed script hung for several minutes against the deployed Postgres
+   instance (it was instant locally against SQLite). Root cause: it was
+   issuing one individual network round trip per row — thousands of them —
+   instead of batched statements. Fixed by switching to `bulk_save_objects`
+   for inserts and three `WHERE id IN (...)` statements for the seat-status
+   update instead of one `UPDATE` per row.
+3. After both services were live, the frontend failed with CORS errors on
+   every dashboard call. Root cause: `CORS_ORIGINS` on Render needed a
+   redeploy to actually take effect after being set, and required an exact
+   string match (no trailing slash, no surrounding quotes) against the
+   Vercel origin.
+
+Swagger docs are automatically available at `/docs` on the deployed
+backend — that satisfies the "API documentation link" submission
+requirement with no extra work: https://seat-allocation-y2n8.onrender.com/docs
 
 ## AI Assistant Design Note
 
@@ -176,7 +216,38 @@ call — see `app/ai_assistant.py`. Reasoning:
   phrasing into one of the existing intents, then route to the same
   deterministic functions — the core logic wouldn't change.
 
-## Repository Structure
+## Submission Checklist
+
+| Requirement | Status / Location |
+|---|---|
+| GitHub repository | https://github.com/Divyasoni2906/seat_allocation |
+| Live frontend URL | https://seat-allocation-flax.vercel.app |
+| Live backend URL | https://seat-allocation-y2n8.onrender.com |
+| README.md | This file |
+| AI_PROMPTS.md | `AI_PROMPTS.md` in repo root |
+| Database schema | `backend/alembic/versions/` (migration files), also documented above |
+| Sample seed data | `backend/app/seed.py` — run via `python -m app.seed` |
+| Sample login credentials | Not applicable — no authentication layer |
+| Screenshots | `screenshots/` folder — see below |
+| API documentation | https://seat-allocation-y2n8.onrender.com/docs (Swagger, auto-generated) |
+| Debugging notes | `AI_PROMPTS.md`, Prompt 8 and Prompt 9 sections |
+| Deployment notes | This file, "Deployment Notes" section above |
+
+### Screenshots
+```markdown
+![Dashboard](dashboard.png)
+![Employee Search](employees.png)
+![Seat Allocation](seat_allocation.png)
+![AI Assistant](ai_assistant.png)
+![Project dashboard](projects.png)
+```
+Capture each directly from the live frontend:
+1. **`dashboard.png`** — the Dashboard tab, showing the stat cards and both charts with real data
+2. **`employees.png`** — the Employees tab with a search term entered and results showing
+3. **`seat_allocation.png`** — the Seat Allocation tab, ideally right after a successful allocation (showing the success message)
+4. **`ai_assistant.png`** — the AI Assistant tab with at least one question asked and answered, e.g. "Where is employee &lt;name&gt; seated?"
+5. **`projects.png`** - shows all the projects and employees grouped together through projects.
+
 
 ```
 ethara/

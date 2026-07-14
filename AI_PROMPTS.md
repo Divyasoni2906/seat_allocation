@@ -262,17 +262,82 @@ all of the above.
 **What AI generated correctly:** The `DATABASE_URL` / `CORS_ORIGINS` /
 `VITE_API_BASE_URL` env var pattern, and confirmation that Swagger docs at
 `/docs` satisfy the API-documentation submission requirement automatically.
+Backend was deployed to Render using its native Python runtime (Build
+Command: `pip install -r requirements.txt`, Start Command: `uvicorn
+app.main:app --host 0.0.0.0 --port $PORT`) rather than the originally
+suggested Docker route — no Dockerfile needed for this hosting choice.
+Frontend deployed to Vercel with `VITE_API_BASE_URL` pointed at the Render
+backend.
 
-**What AI generated incorrectly:** N/A for this project — deployment itself
-is documented as a checklist in the README rather than executed as part of
-this build.
+**What AI generated incorrectly / real issues hit during actual deployment:**
 
-**What I manually fixed:** N/A.
+1. **`alembic upgrade head` failed with `psycopg2.errors.DuplicateObject:
+   type "projectstatus" already exists`** the first time it ran against the
+   fresh Render Postgres database. Root cause: `main.py` had
+   `Base.metadata.create_all(bind=engine)` executing on every app import —
+   completely separate from Alembic. The app (or the seed script's own
+   `Base.metadata.create_all`) had already created the tables/enum types
+   directly at some point before the migration ran, so Alembic's
+   `alembic_version` table showed no migration history while the schema
+   objects already existed, causing the conflict.
 
-**How I verified:** Confirmed locally that `DATABASE_URL` swaps cleanly
-between SQLite and Postgres with no code changes (SQLAlchemy dialect
-handles it) — verified by reading the connection string branch in
-`database.py` and running the app against a local SQLite file.
+2. **The seed script appeared to hang indefinitely** against the deployed
+   Postgres instance, despite running in ~3 seconds locally against SQLite.
+   Root cause, found by adding a `print(..., flush=True)` after every major
+   step: the bottleneck was `db.bulk_update_mappings()` for seat statuses,
+   which issues one individual `UPDATE` statement per row via `executemany`
+   — roughly 5,600 separate network round trips to Render's Oregon region.
+   Separately, earlier `db.refresh()` calls after every insert (for 5,000
+   employees and 5,600 seats) had the same one-round-trip-per-row problem.
+
+3. **After deploying both services, the frontend failed every dashboard
+   call with a CORS error** (`No 'Access-Control-Allow-Origin' header is
+   present`). Root cause was two-fold: Render's environment variable change
+   for `CORS_ORIGINS` required a manual redeploy to actually take effect
+   (setting it in the dashboard alone didn't restart the running service),
+   and the value needs an exact string match against the frontend's origin
+   (no trailing slash, no surrounding quotes) since `main.py` does
+   `os.getenv("CORS_ORIGINS", ...).split(",")` with no normalization.
+
+**What I manually fixed:**
+- Removed `Base.metadata.create_all(bind=engine)` from `main.py` entirely.
+  Alembic is now the single source of schema truth — confirmed by the
+  comment left in place explaining why, so this doesn't get re-added later.
+- Rewrote `reset_db()` in `seed.py` to delete rows via `DELETE FROM` instead
+  of `drop_all()`/`create_all()` (which was *also* bypassing Alembic and
+  additionally dangerous to run against a live database), and added a
+  `CONFIRM_SEED_RESET=yes` environment-variable guard so it refuses to run
+  destructively against any non-SQLite `DATABASE_URL` without explicit
+  confirmation.
+- Rewrote the seat-status update step to use three `WHERE id IN (...)`
+  bulk `UPDATE` statements (one per status: occupied/reserved/available)
+  instead of one `UPDATE` per row, and replaced the per-row `db.refresh()`
+  calls after bulk inserts with `db.bulk_save_objects()` followed by a
+  single `SELECT ... ORDER BY id` per table to recover the newly assigned
+  IDs — reducing seed time from an unbounded hang to a few seconds even
+  over the network.
+- Added `connect_timeout=10` to the Postgres connection args in
+  `database.py`, so a genuine connection failure now surfaces as a clear
+  error within 10 seconds instead of hanging indefinitely — this was added
+  specifically so future connection issues are distinguishable from slow
+  queries.
+- Set `CORS_ORIGINS` on Render to the exact Vercel origin string and
+  triggered a manual redeploy for it to take effect.
+
+**How I verified:**
+- Ran `alembic upgrade head` against the cleaned Render Postgres instance
+  and confirmed the log showed `Context impl PostgresqlImpl` with no errors.
+- Ran the rewritten seed script with step-by-step progress logging and
+  confirmed it completed in seconds; queried the live database directly
+  afterward to confirm exact counts: 5,000 employees, 5,600 seats, 4,940
+  active allocations, matching every minimum in the brief.
+- Hit the live backend directly:
+  `curl https://seat-allocation-y2n8.onrender.com/dashboard/summary` —
+  returned real, correct totals.
+- Loaded the live frontend at
+  `https://seat-allocation-flax.vercel.app` and confirmed the dashboard,
+  employee search, seat allocation, and AI assistant all load real data
+  from the deployed backend with no CORS errors after the redeploy.
 
 ---
 
