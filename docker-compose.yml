@@ -12,12 +12,18 @@ services:
       - "5432:5432"
     volumes:
       - ethara_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ethara"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   backend:
     build: ./backend
     restart: unless-stopped
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     environment:
       DATABASE_URL: postgresql://ethara:ethara@db:5432/ethara
       CORS_ORIGINS: http://localhost:5173
