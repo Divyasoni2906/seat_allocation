@@ -239,6 +239,8 @@ call — see `app/ai_assistant.py`. Reasoning:
 ![Employee Search](employees.png)
 ![Seat Allocation](seat_allocation.png)
 ![AI Assistant](ai_assistant.png)
+<img width="1361" height="626" alt="image" src="https://github.com/user-attachments/assets/66733b4b-3708-4f52-9c62-a1fac50a4a64" />
+
 ![Project dashboard](projects.png)
 
 Capture each directly from the live frontend:
