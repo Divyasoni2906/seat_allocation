@@ -238,7 +238,8 @@ call — see `app/ai_assistant.py`. Reasoning:
 ![Dashboard](dashboard.png)
 ![Employee Search](employees.png)
 ![Seat Allocation](seat_allocation.png)
-![AI Assistant](ai_assistant.png)
+<img width="733" height="565" alt="image" src="https://github.com/user-attachments/assets/4bdf27d9-3f16-4256-9068-35598d53ae08" />
+<img width="1355" height="338" alt="image" src="https://github.com/user-attachments/assets/9a173f4d-7861-45d8-ad65-52181aadc66f" />
 <img width="1361" height="626" alt="image" src="https://github.com/user-attachments/assets/66733b4b-3708-4f52-9c62-a1fac50a4a64" />
 
 ![Project dashboard](projects.png)
