@@ -399,6 +399,12 @@ export default function SeatAllocation() {
                   <div className="text-slate-500">
                     F{s.floor} &middot; {s.zone} &middot; {s.occupied_by || 'Unknown'}
                   </div>
+                  <div className="text-slate-400">
+                    {s.occupied_by_project ? `Project: ${s.occupied_by_project}` : 'No project'}
+                    {s.allocation_date && (
+                      <> &middot; since {new Date(s.allocation_date).toLocaleDateString()}</>
+                    )}
+                  </div>
                 </div>
                 <button
                   type="button"

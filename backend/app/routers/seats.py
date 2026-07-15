@@ -14,13 +14,20 @@ router = APIRouter(prefix="/seats", tags=["Seats"])
 
 def _seat_to_out(db: Session, seat: models.Seat) -> schemas.SeatOut:
     occupied_by = None
+    occupied_by_project = None
+    allocation_date = None
     allocation = get_active_allocation_for_seat(db, seat.id)
     if allocation:
         emp = db.query(models.Employee).get(allocation.employee_id)
         occupied_by = emp.name if emp else None
+        if allocation.project_id:
+            project = db.query(models.Project).get(allocation.project_id)
+            occupied_by_project = project.name if project else None
+        allocation_date = allocation.allocation_date
     return schemas.SeatOut(
         id=seat.id, floor=seat.floor, zone=seat.zone, bay=seat.bay,
         seat_number=seat.seat_number, status=seat.status, occupied_by=occupied_by,
+        occupied_by_project=occupied_by_project, allocation_date=allocation_date,
     )
 
 

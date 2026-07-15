@@ -80,6 +80,8 @@ class SeatOut(BaseModel):
     seat_number: str
     status: SeatStatus
     occupied_by: Optional[str] = None
+    occupied_by_project: Optional[str] = None
+    allocation_date: Optional[datetime] = None
 
 
 # ---------- Allocation ----------

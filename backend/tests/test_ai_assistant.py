@@ -126,3 +126,53 @@ def test_release_request_without_identifying_info_asks_for_it(db_session):
     result = handle_query(db_session, "release my seat")
     assert result["intent"] == "release_request"
     assert "email" in result["answer"].lower() or "name" in result["answer"].lower()
+
+def test_team_location_uses_physical_seat_proximity(db_session, seeded):
+    """
+    "Who is sitting near me?" should mean physical proximity (same
+    floor+zone as the asker's active seat), not "who's on my project" --
+    two employees on different projects but the same zone should show up
+    as neighbors, and a same-project teammate seated elsewhere should not.
+    """
+    allocation = allocate_seat(db_session, employee_id=seeded["emp"].id, seat_id=seeded["seat"].id)
+    asker_floor, asker_zone = seeded["seat"].floor, seeded["seat"].zone
+
+    other_project = models.Project(name="Other")
+    db_session.add(other_project)
+    db_session.commit()
+    db_session.refresh(other_project)
+
+    neighbor_seat = models.Seat(floor=asker_floor, zone=asker_zone, bay="4", seat_number="B4-24")
+    neighbor = models.Employee(
+        employee_code="E2", name="Neighbor Nearby", email="neighbor@ethara.ai",
+        status=models.EmployeeStatus.pending, project_id=other_project.id,
+    )
+    far_seat = models.Seat(floor=9, zone="Z", bay="1", seat_number="Z1-01")
+    far_teammate = models.Employee(
+        employee_code="E3", name="Far Teammate", email="far@ethara.ai",
+        status=models.EmployeeStatus.pending, project_id=seeded["project"].id,
+    )
+    db_session.add_all([neighbor_seat, neighbor, far_seat, far_teammate])
+    db_session.commit()
+    db_session.refresh(neighbor)
+    db_session.refresh(far_teammate)
+
+    allocate_seat(db_session, employee_id=neighbor.id, seat_id=neighbor_seat.id)
+    allocate_seat(db_session, employee_id=far_teammate.id, seat_id=far_seat.id)
+
+    result = handle_query(db_session, "Who is sitting near me? amit@ethara.ai")
+    assert result["intent"] == "team_location"
+    assert "Neighbor Nearby" in result["answer"]
+    assert "Far Teammate" not in result["answer"]
+
+
+def test_team_location_with_no_active_seat_is_reported_gracefully(db_session, seeded):
+    result = handle_query(db_session, "Who is sitting near me? amit@ethara.ai")
+    assert result["intent"] == "team_location"
+    assert "doesn't have an active seat" in result["answer"]
+
+
+def test_team_location_unresolvable_employee_asks_for_identifying_info(db_session):
+    result = handle_query(db_session, "Who is sitting near me? nobody@ethara.ai")
+    assert result["intent"] == "team_location"
+    assert "couldn't find" in result["answer"].lower()

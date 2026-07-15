@@ -127,7 +127,7 @@ def _resolve_employee(db: Session, email: Optional[str], name: Optional[str]) ->
     return None
 
 
-def _current_seat_desc(db: Session, employee: models.Employee) -> Optional[str]:
+def _current_seat(db: Session, employee: models.Employee) -> Optional[models.Seat]:
     allocation = (
         db.query(models.SeatAllocation)
         .filter(
@@ -138,7 +138,11 @@ def _current_seat_desc(db: Session, employee: models.Employee) -> Optional[str]:
     )
     if not allocation:
         return None
-    seat = db.query(models.Seat).get(allocation.seat_id)
+    return db.query(models.Seat).get(allocation.seat_id)
+
+
+def _current_seat_desc(db: Session, employee: models.Employee) -> Optional[str]:
+    seat = _current_seat(db, employee)
     if not seat:
         return None
     return f"Floor {seat.floor}, Zone {seat.zone}, Bay {seat.bay}, Seat {seat.seat_number}"
@@ -203,18 +207,41 @@ def handle_query(db: Session, query: str) -> dict:
 
     if intent == "team_location":
         employee = _resolve_employee(db, entities["email"], entities["name"])
-        if not employee or not employee.project_id:
-            return {"answer": "I need to know who you are and your project to find your teammates. Please include your email.", "intent": intent}
-        teammates = (
-            db.query(models.Employee)
-            .filter(models.Employee.project_id == employee.project_id, models.Employee.id != employee.id)
+        if not employee:
+            return {
+                "answer": "I couldn't find that employee. Could you share their name or email?",
+                "intent": intent,
+            }
+        seat = _current_seat(db, employee)
+        if not seat:
+            return {
+                "answer": f"{employee.name} doesn't have an active seat allocation yet, so I can't tell who's nearby.",
+                "intent": intent,
+            }
+        nearby_allocations = (
+            db.query(models.SeatAllocation)
+            .join(models.Seat, models.SeatAllocation.seat_id == models.Seat.id)
+            .filter(
+                models.Seat.floor == seat.floor,
+                models.Seat.zone == seat.zone,
+                models.SeatAllocation.allocation_status == models.AllocationStatus.active,
+                models.SeatAllocation.employee_id != employee.id,
+            )
             .limit(10)
             .all()
         )
-        if not teammates:
-            return {"answer": "No other teammates found on your project.", "intent": intent}
-        names = ", ".join(t.name for t in teammates[:10])
-        return {"answer": f"Teammates on Project {employee.project.name if employee.project else ''}: {names}.", "intent": intent}
+        if not nearby_allocations:
+            return {
+                "answer": f"No one else is currently seated on Floor {seat.floor}, Zone {seat.zone} (where {employee.name} sits).",
+                "intent": intent,
+            }
+        neighbor_ids = [a.employee_id for a in nearby_allocations]
+        neighbors = db.query(models.Employee).filter(models.Employee.id.in_(neighbor_ids)).all()
+        names = ", ".join(n.name for n in neighbors)
+        return {
+            "answer": f"Seated near {employee.name} on Floor {seat.floor}, Zone {seat.zone}: {names}.",
+            "intent": intent,
+        }
 
     if intent == "allocate_request":
         return {
