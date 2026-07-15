@@ -6,6 +6,7 @@ const EXAMPLE_QUERIES = [
   'Show all available seats on Floor 3',
   'How many seats are occupied for Project Indigo?',
   'Which project am I assigned to? amit@ethara.ai',
+  'Who is sitting near me? amit@ethara.ai',
   'Release seat for amit@ethara.ai',
 ]
 
