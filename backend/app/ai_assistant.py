@@ -16,13 +16,16 @@ and call the same functions -- it would not change any of this logic.
 import re
 from typing import Optional
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 
 from . import models
 from .services import release_seat, AllocationError
 
 INTENTS = [
     "seat_lookup",
+    "seat_occupant_lookup",
     "project_lookup",
+    "project_location",
     "availability_check",
     "utilization_check",
     "team_location",
@@ -83,6 +86,18 @@ def _extract_name(text: str) -> Optional[str]:
     return None
 
 
+def _extract_seat_number(text: str) -> Optional[str]:
+    # Requires a digit somewhere so it doesn't false-match "seat allocation"/
+    # "seat status". Captured as one token first, then checked for a digit
+    # in Python -- doing the digit check inline in the regex character class
+    # boundary (e.g. [A-Za-z0-9]*\d) fails to extract seat numbers where a
+    # dash appears before the first digit, like "ZZ-9999".
+    match = re.search(r"seat\s+([A-Za-z0-9][A-Za-z0-9\-]*)", text, re.IGNORECASE)
+    if match and any(ch.isdigit() for ch in match.group(1)):
+        return match.group(1).upper()
+    return None
+
+
 def parse_intent(query: str, db: Session) -> dict:
     q = query.strip()
     q_lower = q.lower()
@@ -93,6 +108,7 @@ def parse_intent(query: str, db: Session) -> dict:
         "floor": _extract_floor(q),
         "zone": _extract_zone(q),
         "project": _extract_project(q, db),
+        "seat_number": _extract_seat_number(q),
     }
 
     if any(k in q_lower for k in ["release my seat", "release seat", "free my seat", "vacate my seat", "release the seat"]):
@@ -107,6 +123,19 @@ def parse_intent(query: str, db: Session) -> dict:
         intent = "availability_check"
     elif any(k in q_lower for k in ["which project", "what project", "project am i", "project is"]):
         intent = "project_lookup"
+    elif "project" in q_lower and any(
+        k in q_lower for k in ["location", "located", "which floor", "which floors", "which zone", "seated across"]
+    ):
+        intent = "project_location"
+    elif entities["seat_number"] and any(
+        k in q_lower for k in ["who is seated", "who is sitting", "who sits", "who occupies", "who's in", "who is in"]
+    ):
+        # Reverse lookup: given a specific seat, who's in it -- checked before
+        # the general seat_lookup branch below, since "who is seated on Floor
+        # 3, Seat Z3-3003" also contains "seated" and would otherwise be
+        # misrouted to seat_lookup, which then wrongly searches for an
+        # employee named "Floor" and reports a confusing "not found".
+        intent = "seat_occupant_lookup"
     elif any(k in q_lower for k in ["where is", "where am i", "my seat", "seated", "sitting"]):
         intent = "seat_lookup"
     else:
@@ -172,6 +201,53 @@ def handle_query(db: Session, query: str) -> dict:
         if employee.project:
             return {"answer": f"{employee.name} is assigned to Project {employee.project.name}.", "intent": intent}
         return {"answer": f"{employee.name} is not currently assigned to a project.", "intent": intent}
+
+    if intent == "seat_occupant_lookup":
+        seat_number = entities["seat_number"]
+        seat = db.query(models.Seat).filter(models.Seat.seat_number.ilike(seat_number)).first()
+        if not seat:
+            return {"answer": f"I couldn't find a seat numbered {seat_number}.", "intent": intent}
+        allocation = (
+            db.query(models.SeatAllocation)
+            .filter(
+                models.SeatAllocation.seat_id == seat.id,
+                models.SeatAllocation.allocation_status == models.AllocationStatus.active,
+            )
+            .first()
+        )
+        if not allocation:
+            return {
+                "answer": f"Seat {seat.seat_number} (Floor {seat.floor}, Zone {seat.zone}) is currently {seat.status.value}, no one is seated there.",
+                "intent": intent,
+            }
+        emp = db.query(models.Employee).get(allocation.employee_id)
+        project_part = f", assigned to Project {emp.project.name}" if emp and emp.project else ""
+        return {
+            "answer": f"Seat {seat.seat_number} (Floor {seat.floor}, Zone {seat.zone}) is occupied by {emp.name if emp else 'an unknown employee'}{project_part}.",
+            "intent": intent,
+        }
+
+    if intent == "project_location":
+        if not entities["project"]:
+            return {"answer": "Which project would you like the location for?", "intent": intent}
+        project = db.query(models.Project).filter(models.Project.name.ilike(f"%{entities['project']}%")).first()
+        if not project:
+            return {"answer": f"I couldn't find a project named {entities['project']}.", "intent": intent}
+        rows = (
+            db.query(models.Seat.floor, func.count(models.SeatAllocation.id))
+            .join(models.SeatAllocation, models.SeatAllocation.seat_id == models.Seat.id)
+            .filter(
+                models.SeatAllocation.project_id == project.id,
+                models.SeatAllocation.allocation_status == models.AllocationStatus.active,
+            )
+            .group_by(models.Seat.floor)
+            .order_by(models.Seat.floor)
+            .all()
+        )
+        if not rows:
+            return {"answer": f"Project {project.name} doesn't currently have anyone seated.", "intent": intent}
+        parts = [f"Floor {floor} ({count} people)" for floor, count in rows]
+        return {"answer": f"Project {project.name} is seated across: {', '.join(parts)}.", "intent": intent}
 
     if intent == "availability_check":
         q = db.query(models.Seat).filter(models.Seat.status == models.SeatStatus.available)
