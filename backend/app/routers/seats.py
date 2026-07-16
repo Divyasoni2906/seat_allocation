@@ -188,13 +188,16 @@ def update_status(seat_id: int, payload: schemas.SeatStatusUpdate, db: Session =
 @router.post("/allocate", response_model=schemas.AllocationOut)
 def allocate(payload: schemas.AllocateRequest, db: Session = Depends(get_db)):
     try:
-        allocation = allocate_seat(db, employee_id=payload.employee_id, project_id=payload.project_id)
+        allocation = allocate_seat(
+            db,
+            employee_id=payload.employee_id,
+            project_id=payload.project_id,
+            seat_id=payload.seat_id,
+            preferred_floor=payload.preferred_floor,
+            preferred_zone=payload.preferred_zone,
+        )
     except AllocationError as e:
         raise HTTPException(status_code=409, detail=str(e))
-    out = schemas.AllocationOut.model_validate(allocation)
-    out.seat = _seat_to_out(db, db.query(models.Seat).get(allocation.seat_id))
-    return out
-
 
 @router.post("/release", response_model=schemas.AllocationOut)
 def release(payload: schemas.ReleaseRequest, db: Session = Depends(get_db)):
