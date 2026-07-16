@@ -198,6 +198,10 @@ def allocate(payload: schemas.AllocateRequest, db: Session = Depends(get_db)):
         )
     except AllocationError as e:
         raise HTTPException(status_code=409, detail=str(e))
+    out = schemas.AllocationOut.model_validate(allocation)
+    out.seat = _seat_to_out(db, db.query(models.Seat).get(allocation.seat_id))
+    return out
+
 
 @router.post("/release", response_model=schemas.AllocationOut)
 def release(payload: schemas.ReleaseRequest, db: Session = Depends(get_db)):
