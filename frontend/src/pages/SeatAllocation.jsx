@@ -146,6 +146,8 @@ export default function SeatAllocation() {
     allocateMutation.mutate({
       employee_id: Number(selectedEmployeeId),
       project_id: selectedProjectId ? Number(selectedProjectId) : undefined,
+      preferred_floor: preferredFloor ? Number(preferredFloor) : undefined,
+      preferred_zone: preferredZone ? preferredZone.trim() : undefined,
     })
   }
 
@@ -286,7 +288,7 @@ export default function SeatAllocation() {
               <input
                 type="text"
                 className="w-1/2 border border-slate-300 rounded-md px-3 py-2 text-sm"
-                placeholder="Zone, e.g. B"
+                placeholder="Zone, e.g. Z2"
                 value={preferredZone}
                 onChange={(e) => setPreferredZone(e.target.value)}
               />
