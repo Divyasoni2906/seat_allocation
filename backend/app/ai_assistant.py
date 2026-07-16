@@ -64,8 +64,16 @@ def _extract_name(text: str) -> Optional[str]:
     # "Where is employee Amit seated?" / "where is amit sitting?" -- matched
     # case-insensitively so lowercase input (very common when typing into a
     # chat box) still resolves to the right employee.
+    #
+    # The optional (?:employee\s+)? right after the anchor matters: without
+    # it, "where IS employee amit seated" matches "is" as the anchor (it
+    # appears before "employee" in the sentence, and re.search takes the
+    # leftmost match), so the capture group greedily grabbed BOTH words --
+    # "employee amit" -- instead of just "amit". Explicitly skipping an
+    # "employee " right after the anchor prevents it from ever landing
+    # inside the captured name.
     match = re.search(
-        r"(?:employee|is|for)\s+([A-Za-z]+(?:\s[A-Za-z]+)?)\s+(?:seated|sitting|assigned)",
+        r"(?:employee|is|for)\s+(?:employee\s+)?([A-Za-z]+(?:\s[A-Za-z]+)?)\s+(?:seated|sitting|assigned)",
         text,
         re.IGNORECASE,
     )
