@@ -49,11 +49,34 @@ def get_active_allocation_for_seat(db: Session, seat_id: int) -> Optional[models
     )
 
 
-def find_seat_near_project(db: Session, project_id: Optional[int]):
+def find_seat_near_project(
+    db: Session,
+    project_id: Optional[int],
+    preferred_floor: Optional[int] = None,
+    preferred_zone: Optional[str] = None,
+):
     """
-    Look for an available seat on the same floor+zone as other active
-    members of the same project. Returns (seat, is_alternate_zone).
+    Seat search order:
+      1. an explicit preferred floor+zone, if one was given and has a free seat
+      2. same floor+zone as other active members of the same project
+      3. any available seat, anywhere (flagged as alternate_zone)
+    Returns (seat, is_alternate_zone).
     """
+    if preferred_floor is not None and preferred_zone is not None:
+        preferred = (
+            db.query(models.Seat)
+            .filter(
+                models.Seat.floor == preferred_floor,
+                models.Seat.zone == preferred_zone,
+                models.Seat.status == models.SeatStatus.available,
+            )
+            .order_by(models.Seat.seat_number)
+            .first()
+        )
+        if preferred:
+            # Explicitly requested and honored -- not an "alternate" placement.
+            return preferred, False
+
     if project_id is not None:
         teammate_seat_ids = (
             db.query(models.SeatAllocation.seat_id)
@@ -102,6 +125,8 @@ def allocate_seat(
     employee_id: int,
     project_id: Optional[int] = None,
     seat_id: Optional[int] = None,
+    preferred_floor: Optional[int] = None,
+    preferred_zone: Optional[str] = None,
 ) -> models.SeatAllocation:
     employee = db.query(models.Employee).get(employee_id)
     if not employee:
@@ -112,6 +137,17 @@ def allocate_seat(
     if existing:
         raise AllocationError(
             f"Employee {employee.name} already has an active seat allocation (seat_id={existing.seat_id})"
+        )
+
+    # Guard against silently reassigning an employee to a different project
+    # via what looks like a plain seat-allocation call. If they're already
+    # mapped to a project and a *different* one is passed in, reject it
+    # explicitly rather than overwriting -- reassignment should go through
+    # PUT /employees/{id}, not be a side effect of allocating a seat.
+    if employee.project_id is not None and project_id is not None and project_id != employee.project_id:
+        raise AllocationError(
+            f"Employee {employee.name} is already mapped to project {employee.project_id}; "
+            f"to move them to project {project_id}, update their record first via PUT /employees/{{id}}"
         )
 
     effective_project_id = project_id if project_id is not None else employee.project_id
@@ -135,10 +171,11 @@ def allocate_seat(
         if seat.status != models.SeatStatus.available:
             raise AllocationError(f"Seat {seat.seat_number} is not available (status={seat.status})")
     else:
-        seat, alternate_zone = find_seat_near_project(db, effective_project_id)
+        seat, alternate_zone = find_seat_near_project(
+            db, effective_project_id, preferred_floor=preferred_floor, preferred_zone=preferred_zone
+        )
         if not seat:
             raise AllocationError("No available seats at this time")
-
     # Rule 2: one active allocation per seat (re-check right before commit)
     if get_active_allocation_for_seat(db, seat.id):
         raise AllocationError(f"Seat {seat.seat_number} was just taken by someone else, please retry")
