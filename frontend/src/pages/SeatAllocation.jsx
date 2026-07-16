@@ -9,6 +9,8 @@ export default function SeatAllocation() {
   const [employeeQuery, setEmployeeQuery] = useState('')
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('')
   const [selectedProjectId, setSelectedProjectId] = useState('')
+  const [preferredFloor, setPreferredFloor] = useState('')
+  const [preferredZone, setPreferredZone] = useState('')
   const [message, setMessage] = useState(null)
   const [csvResult, setCsvResult] = useState(null)
   const [csvUploading, setCsvUploading] = useState(false)
@@ -52,6 +54,8 @@ export default function SeatAllocation() {
       setEmployeeQuery('')
       setSelectedEmployeeId('')
       setSelectedProjectId('')
+      setPreferredFloor('')
+      setPreferredZone('')
       invalidateAll()
     },
     onError: (err) => {
@@ -267,7 +271,27 @@ export default function SeatAllocation() {
               ))}
             </select>
           </div>
-
+          <div>
+            <label className="text-xs text-slate-500">
+              Preferred floor / zone (optional — tries this first, falls back automatically if full)
+            </label>
+            <div className="flex gap-2 mt-1">
+              <input
+                type="number"
+                className="w-1/2 border border-slate-300 rounded-md px-3 py-2 text-sm"
+                placeholder="Floor, e.g. 2"
+                value={preferredFloor}
+                onChange={(e) => setPreferredFloor(e.target.value)}
+              />
+              <input
+                type="text"
+                className="w-1/2 border border-slate-300 rounded-md px-3 py-2 text-sm"
+                placeholder="Zone, e.g. B"
+                value={preferredZone}
+                onChange={(e) => setPreferredZone(e.target.value)}
+              />
+            </div>
+          </div>
           <button
             type="submit"
             disabled={
