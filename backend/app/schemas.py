@@ -88,6 +88,7 @@ class SeatOut(BaseModel):
 class AllocateRequest(BaseModel):
     employee_id: int
     project_id: Optional[int] = None
+    seat_id: Optional[int] = None
     preferred_floor: Optional[int] = None
     preferred_zone: Optional[str] = None
 
